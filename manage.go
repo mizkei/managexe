@@ -38,7 +38,7 @@ func (m *Manager) Run(ctx context.Context) {
 				case <-egctx.Done():
 					return egctx.Err()
 				default:
-					go func() {
+					func() {
 						if err := task.Exec(); err != nil {
 							// TODO: error
 							m.errCh <- err
