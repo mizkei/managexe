@@ -2,9 +2,18 @@ package managexe
 
 import (
 	"context"
+	"fmt"
 
 	"golang.org/x/sync/errgroup"
 )
+
+type ErrPanic struct {
+	Err interface{}
+}
+
+func (ep ErrPanic) Error() string {
+	return fmt.Sprint(ep.Err)
+}
 
 type Execer interface {
 	Exec() error
@@ -39,6 +48,12 @@ func (m *Manager) Run(ctx context.Context) {
 					return egctx.Err()
 				default:
 					func() {
+						defer func() {
+							if err := recover(); err != nil {
+								m.errCh <- ErrPanic{err}
+							}
+						}()
+
 						if err := task.Exec(); err != nil {
 							// TODO: error
 							m.errCh <- err
