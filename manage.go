@@ -3,6 +3,7 @@ package managexe
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -20,9 +21,12 @@ type Execer interface {
 }
 
 type Manager struct {
-	ch      chan Execer
-	errCh   chan error
-	workerN int
+	sync.Mutex
+	ch       chan Execer
+	errCh    chan error
+	pauseCh  chan struct{}
+	isPaused bool
+	workerN  int
 }
 
 func (m *Manager) NumTask() int {
@@ -33,6 +37,28 @@ func (m *Manager) ErrCh() <-chan error {
 	return m.errCh
 }
 
+func (m *Manager) Pause() {
+	m.Lock()
+	defer m.Unlock()
+	if m.isPaused {
+		return
+	}
+
+	m.isPaused = true
+	m.pauseCh = make(chan struct{})
+}
+
+func (m *Manager) Resume() {
+	m.Lock()
+	defer m.Unlock()
+	if !m.isPaused {
+		return
+	}
+
+	m.isPaused = false
+	close(m.pauseCh)
+}
+
 func (m *Manager) AddTask(task Execer) {
 	m.ch <- task
 }
@@ -40,9 +66,14 @@ func (m *Manager) AddTask(task Execer) {
 func (m *Manager) Run(ctx context.Context) {
 	eg, egctx := errgroup.WithContext(ctx)
 
+	close(m.pauseCh)
+	m.isPaused = false
+
 	for i := 0; i < m.workerN; i++ {
 		eg.Go(func() error {
 			for task := range m.ch {
+				<-m.pauseCh
+
 				select {
 				case <-egctx.Done():
 					return egctx.Err()
@@ -71,8 +102,9 @@ func (m *Manager) Run(ctx context.Context) {
 
 func NewManager(workerN, bufferN int) *Manager {
 	return &Manager{
-		ch:      make(chan Execer, bufferN),
-		errCh:   make(chan error, bufferN),
-		workerN: workerN,
+		ch:       make(chan Execer, bufferN),
+		errCh:    make(chan error, bufferN),
+		isPaused: true,
+		workerN:  workerN,
 	}
 }
