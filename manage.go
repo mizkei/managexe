@@ -16,7 +16,7 @@ func (ep ErrPanic) Error() string {
 }
 
 type Execer interface {
-	Exec() error
+	Exec(context.Context) error
 }
 
 type Manager struct {
@@ -54,7 +54,7 @@ func (m *Manager) Run(ctx context.Context) {
 							}
 						}()
 
-						if err := task.Exec(); err != nil {
+						if err := task.Exec(ctx); err != nil {
 							// TODO: error
 							m.errCh <- err
 						}
