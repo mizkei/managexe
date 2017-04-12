@@ -104,6 +104,7 @@ func NewManager(workerN, bufferN int) *Manager {
 	return &Manager{
 		ch:       make(chan Execer, bufferN),
 		errCh:    make(chan error, bufferN),
+		pauseCh:  make(chan struct{}),
 		isPaused: true,
 		workerN:  workerN,
 	}
