@@ -21,7 +21,7 @@ type Execer interface {
 }
 
 type Manager struct {
-	sync.Mutex
+	mutex    sync.Mutex
 	ch       chan Execer
 	errCh    chan error
 	pauseCh  chan struct{}
@@ -38,8 +38,8 @@ func (m *Manager) ErrCh() <-chan error {
 }
 
 func (m *Manager) Pause() {
-	m.Lock()
-	defer m.Unlock()
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	if m.isPaused {
 		return
 	}
@@ -49,8 +49,8 @@ func (m *Manager) Pause() {
 }
 
 func (m *Manager) Resume() {
-	m.Lock()
-	defer m.Unlock()
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	if !m.isPaused {
 		return
 	}
