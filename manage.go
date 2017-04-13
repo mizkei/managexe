@@ -66,8 +66,7 @@ func (m *Manager) AddTask(task Execer) {
 func (m *Manager) Run(ctx context.Context) {
 	eg, egctx := errgroup.WithContext(ctx)
 
-	close(m.pauseCh)
-	m.isPaused = false
+	m.Resume()
 
 	for i := 0; i < m.workerN; i++ {
 		eg.Go(func() error {
