@@ -15,7 +15,7 @@ func (a *testA) wait() {
 }
 
 func (a *testA) Exec(ctx context.Context) error {
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 	close(a.ch)
 	return nil
 }
