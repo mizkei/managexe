@@ -32,6 +32,12 @@ func TestRun(t *testing.T) {
 	for _, a := range list {
 		manager.AddTask(a)
 	}
+
+	if n := manager.NumTask(); n != 3 {
+		t.Errorf("[error] number of task. got %d, wont %d", n, 3)
+		return
+	}
+
 	for _, a := range list {
 		a.wait()
 	}
