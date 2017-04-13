@@ -8,6 +8,7 @@ import (
 
 type testA struct {
 	ch chan struct{}
+	fn func()
 }
 
 func (a *testA) wait() {
@@ -16,6 +17,9 @@ func (a *testA) wait() {
 
 func (a *testA) Exec(ctx context.Context) error {
 	time.Sleep(1 * time.Second)
+	if a.fn != nil {
+		a.fn()
+	}
 	close(a.ch)
 	return nil
 }
@@ -28,7 +32,11 @@ func TestRun(t *testing.T) {
 	go manager.Run(ctx)
 
 	start := time.Now()
-	list := []*testA{{make(chan struct{})}, {make(chan struct{})}, {make(chan struct{})}}
+	list := []*testA{
+		{make(chan struct{}), func() {}},
+		{make(chan struct{}), func() {}},
+		{make(chan struct{}), func() {}},
+	}
 	for _, a := range list {
 		manager.AddTask(a)
 	}
@@ -44,4 +52,51 @@ func TestRun(t *testing.T) {
 	end := time.Now()
 
 	t.Logf("execution time: %s", end.Sub(start))
+}
+
+func TestPauseAndResume(t *testing.T) {
+	manager := NewManager(3, 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go manager.Run(ctx)
+	time.Sleep(500 * time.Millisecond)
+	manager.Pause()
+
+	ch := make(chan struct{})
+	count := 0
+	go func() {
+		for range ch {
+			count++
+		}
+	}()
+
+	list := []*testA{
+		{make(chan struct{}), func() { ch <- struct{}{} }},
+		{make(chan struct{}), func() { ch <- struct{}{} }},
+		{make(chan struct{}), func() { ch <- struct{}{} }},
+	}
+	for _, a := range list {
+		manager.AddTask(a)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	if count != 0 {
+		t.Errorf("[error] count. got %d, wont %d", count, 0)
+		return
+	}
+
+	manager.Resume()
+
+	time.Sleep(2 * time.Second)
+
+	if count != 3 {
+		t.Errorf("[error] count. got %d, wont %d", count, 3)
+		return
+	}
+
+	for _, a := range list {
+		a.wait()
+	}
 }
