@@ -18,12 +18,12 @@ func (ep ErrPanic) Error() string {
 
 type Execer interface {
 	Exec(context.Context) error
+	ErrHandle(error)
 }
 
 type Manager struct {
 	mutex    sync.Mutex
 	ch       chan Execer
-	errCh    chan error
 	pauseCh  chan struct{}
 	isPaused bool
 	workerN  int
@@ -31,10 +31,6 @@ type Manager struct {
 
 func (m *Manager) NumTask() int {
 	return len(m.ch)
-}
-
-func (m *Manager) ErrCh() <-chan error {
-	return m.errCh
 }
 
 func (m *Manager) Pause() {
@@ -80,13 +76,12 @@ func (m *Manager) Run(ctx context.Context) {
 					func() {
 						defer func() {
 							if err := recover(); err != nil {
-								m.errCh <- ErrPanic{err}
+								task.ErrHandle(ErrPanic{err})
 							}
 						}()
 
 						if err := task.Exec(ctx); err != nil {
-							// TODO: error
-							m.errCh <- err
+							task.ErrHandle(err)
 						}
 					}()
 				}
@@ -102,7 +97,6 @@ func (m *Manager) Run(ctx context.Context) {
 func NewManager(workerN, bufferN int) *Manager {
 	return &Manager{
 		ch:       make(chan Execer, bufferN),
-		errCh:    make(chan error, bufferN),
 		pauseCh:  make(chan struct{}),
 		isPaused: true,
 		workerN:  workerN,

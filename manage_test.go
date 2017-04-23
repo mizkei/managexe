@@ -24,6 +24,8 @@ func (a *testA) Exec(ctx context.Context) error {
 	return nil
 }
 
+func (a *testA) ErrHandle(_ error) {}
+
 func TestRun(t *testing.T) {
 	manager := NewManager(3, 100)
 	ctx, cancel := context.WithCancel(context.Background())
