@@ -29,6 +29,10 @@ type Manager struct {
 	workerN  int
 }
 
+func (m Manager) IsPaused() bool {
+	return m.isPaused
+}
+
 func (m *Manager) NumTask() int {
 	return len(m.ch)
 }
