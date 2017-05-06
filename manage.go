@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -27,14 +28,19 @@ type Manager struct {
 	pauseCh  chan struct{}
 	isPaused bool
 	workerN  int
+	runningN int32
 }
 
 func (m Manager) IsPaused() bool {
 	return m.isPaused
 }
 
-func (m *Manager) NumTask() int {
+func (m Manager) NumTask() int {
 	return len(m.ch)
+}
+
+func (m Manager) WorkerState() (workerN, runningN int) {
+	return m.workerN, int(m.runningN)
 }
 
 func (m *Manager) Pause() {
@@ -72,9 +78,11 @@ func (m *Manager) Run(ctx context.Context) {
 		eg.Go(func() error {
 			for task := range m.ch {
 				<-m.pauseCh
+				atomic.AddInt32(&m.runningN, 1)
 
 				select {
 				case <-egctx.Done():
+					atomic.AddInt32(&m.runningN, -1)
 					return egctx.Err()
 				default:
 					func() {
@@ -89,6 +97,8 @@ func (m *Manager) Run(ctx context.Context) {
 						}
 					}()
 				}
+
+				atomic.AddInt32(&m.runningN, -1)
 			}
 
 			return nil
@@ -104,5 +114,6 @@ func NewManager(workerN, bufferN int) *Manager {
 		pauseCh:  make(chan struct{}),
 		isPaused: true,
 		workerN:  workerN,
+		runningN: 0,
 	}
 }
