@@ -88,6 +88,10 @@ func TestPauseAndResume(t *testing.T) {
 		t.Errorf("[error] count. got %d, wont %d", count, 0)
 		return
 	}
+	if wn, rn := manager.WorkerState(); wn != 3 || rn != 0 {
+		t.Errorf("[error] (workerN, runningN) . got (%d, %d), wont (%d, %d)", wn, rn, 3, 0)
+		return
+	}
 
 	manager.Resume()
 
