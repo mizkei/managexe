@@ -37,7 +37,7 @@ func (m Manager) IsPaused() bool {
 }
 
 func (m Manager) NumTask() int {
-	return len(m.ch)
+	return int(m.taskN)
 }
 
 func (m Manager) WorkerState() (workerN, runningN int) {
