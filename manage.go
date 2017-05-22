@@ -28,6 +28,7 @@ type Manager struct {
 	pauseCh  chan struct{}
 	isPaused bool
 	workerN  int
+	taskN    int32
 	runningN int32
 }
 
@@ -66,6 +67,7 @@ func (m *Manager) Resume() {
 }
 
 func (m *Manager) AddTask(task Execer) {
+	atomic.AddInt32(&m.taskN, 1)
 	m.ch <- task
 }
 
@@ -83,6 +85,7 @@ func (m *Manager) Run(ctx context.Context) {
 				select {
 				case <-egctx.Done():
 					atomic.AddInt32(&m.runningN, -1)
+					atomic.AddInt32(&m.taskN, -1)
 					return egctx.Err()
 				default:
 					func() {
@@ -99,6 +102,7 @@ func (m *Manager) Run(ctx context.Context) {
 				}
 
 				atomic.AddInt32(&m.runningN, -1)
+				atomic.AddInt32(&m.taskN, -1)
 			}
 
 			return nil
@@ -114,6 +118,7 @@ func NewManager(workerN, bufferN int) *Manager {
 		pauseCh:  make(chan struct{}),
 		isPaused: true,
 		workerN:  workerN,
+		taskN:    0,
 		runningN: 0,
 	}
 }
