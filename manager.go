@@ -1,124 +1,66 @@
-package managexe
+package tasx
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
-
-	"golang.org/x/sync/errgroup"
 )
 
-type ErrPanic struct {
-	Err interface{}
-}
-
-func (ep ErrPanic) Error() string {
-	return fmt.Sprint(ep.Err)
-}
-
-type Execer interface {
-	Exec(context.Context) error
-	ErrHandle(error)
-}
-
 type Manager struct {
-	mutex    sync.Mutex
-	ch       chan Execer
-	pauseCh  chan struct{}
-	isPaused bool
-	workerN  int
-	taskN    int32
-	runningN int32
-}
-
-func (m Manager) IsPaused() bool {
-	return m.isPaused
-}
-
-func (m Manager) NumTask() int {
-	return int(m.taskN)
+	workerN     int
+	runningN    int32
+	fetcher     TaskFetcher
+	handlePanic func(interface{})
 }
 
 func (m Manager) WorkerState() (workerN, runningN int) {
 	return m.workerN, int(m.runningN)
 }
 
-func (m *Manager) Pause() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	if m.isPaused {
-		return
-	}
-
-	m.isPaused = true
-	m.pauseCh = make(chan struct{})
-}
-
-func (m *Manager) Resume() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	if !m.isPaused {
-		return
-	}
-
-	m.isPaused = false
-	close(m.pauseCh)
-}
-
-func (m *Manager) AddTask(task Execer) {
-	atomic.AddInt32(&m.taskN, 1)
-	m.ch <- task
-}
-
 func (m *Manager) Run(ctx context.Context) {
-	eg, egctx := errgroup.WithContext(ctx)
-
-	m.Resume()
+	var wg sync.WaitGroup
 
 	for i := 0; i < m.workerN; i++ {
-		eg.Go(func() error {
-			for task := range m.ch {
-				<-m.pauseCh
-				atomic.AddInt32(&m.runningN, 1)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
+			for {
 				select {
-				case <-egctx.Done():
-					atomic.AddInt32(&m.runningN, -1)
-					atomic.AddInt32(&m.taskN, -1)
-					return egctx.Err()
+				case <-ctx.Done():
+					return
 				default:
+					task, err := m.fetcher.FetchTask(ctx)
+					if err != nil {
+						m.fetcher.HandleErr(err)
+						continue
+					}
+					atomic.AddInt32(&m.runningN, 1)
+
 					func() {
 						defer func() {
+							atomic.AddInt32(&m.runningN, -1)
 							if err := recover(); err != nil {
-								task.ErrHandle(ErrPanic{err})
+								m.handlePanic(err)
 							}
 						}()
-
-						if err := task.Exec(ctx); err != nil {
-							task.ErrHandle(err)
+						if err := task.Run(ctx); err != nil {
+							task.HandleErr(err)
 						}
 					}()
 				}
-
-				atomic.AddInt32(&m.runningN, -1)
-				atomic.AddInt32(&m.taskN, -1)
 			}
-
-			return nil
-		})
+		}()
 	}
 
-	eg.Wait()
+	wg.Wait()
 }
 
-func NewManager(workerN, bufferN int) *Manager {
+func NewManager(workerN int, fetcher TaskFetcher, panicHandler func(interface{})) *Manager {
 	return &Manager{
-		ch:       make(chan Execer, bufferN),
-		pauseCh:  make(chan struct{}),
-		isPaused: true,
-		workerN:  workerN,
-		taskN:    0,
-		runningN: 0,
+		workerN:     workerN,
+		fetcher:     fetcher,
+		runningN:    0,
+		handlePanic: panicHandler,
 	}
 }
