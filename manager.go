@@ -7,9 +7,11 @@ import (
 )
 
 type Manager struct {
+	wg          sync.WaitGroup
 	workerN     int
 	runningN    int32
 	fetcher     TaskFetcher
+	waitCh      chan struct{}
 	handlePanic func(interface{})
 }
 
@@ -17,13 +19,16 @@ func (m Manager) WorkerState() (workerN, runningN int) {
 	return m.workerN, int(m.runningN)
 }
 
-func (m *Manager) Run(ctx context.Context) {
-	var wg sync.WaitGroup
+func (m *Manager) Wait() {
+	<-m.waitCh
+	m.wg.Wait()
+}
 
+func (m *Manager) Run(ctx context.Context) {
 	for i := 0; i < m.workerN; i++ {
-		wg.Add(1)
+		m.wg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer m.wg.Done()
 
 			for {
 				select {
@@ -53,7 +58,8 @@ func (m *Manager) Run(ctx context.Context) {
 		}()
 	}
 
-	wg.Wait()
+	close(m.waitCh)
+	m.wg.Wait()
 }
 
 func NewManager(workerN int, fetcher TaskFetcher, panicHandler func(interface{})) *Manager {
@@ -61,6 +67,7 @@ func NewManager(workerN int, fetcher TaskFetcher, panicHandler func(interface{})
 		workerN:     workerN,
 		fetcher:     fetcher,
 		runningN:    0,
+		waitCh:      make(chan struct{}),
 		handlePanic: panicHandler,
 	}
 }
