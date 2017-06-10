@@ -2,17 +2,22 @@ package tasx
 
 import (
 	"context"
+	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 )
 
+var (
+	Logger = log.New(os.Stderr, "", log.Ldate|log.Ltime)
+)
+
 type Manager struct {
-	wg          sync.WaitGroup
-	workerN     int
-	runningN    int32
-	fetcher     TaskFetcher
-	waitCh      chan struct{}
-	handlePanic func(interface{})
+	wg       sync.WaitGroup
+	workerN  int
+	runningN int32
+	fetcher  TaskFetcher
+	waitCh   chan struct{}
 }
 
 func (m Manager) WorkerState() (workerN, runningN int) {
@@ -37,7 +42,7 @@ func (m *Manager) Run(ctx context.Context) {
 				default:
 					task, err := m.fetcher.FetchTask(ctx)
 					if err != nil {
-						m.fetcher.HandleErr(err)
+						Logger.Println(err)
 						continue
 					}
 					atomic.AddInt32(&m.runningN, 1)
@@ -46,11 +51,11 @@ func (m *Manager) Run(ctx context.Context) {
 						defer func() {
 							atomic.AddInt32(&m.runningN, -1)
 							if err := recover(); err != nil {
-								m.handlePanic(err)
+								Logger.Println(err)
 							}
 						}()
 						if err := task.Run(ctx); err != nil {
-							task.HandleErr(err)
+							Logger.Println(err)
 						}
 					}()
 				}
@@ -62,12 +67,11 @@ func (m *Manager) Run(ctx context.Context) {
 	m.wg.Wait()
 }
 
-func NewManager(workerN int, fetcher TaskFetcher, panicHandler func(interface{})) *Manager {
+func NewManager(workerN int, fetcher TaskFetcher) *Manager {
 	return &Manager{
-		workerN:     workerN,
-		fetcher:     fetcher,
-		runningN:    0,
-		waitCh:      make(chan struct{}),
-		handlePanic: panicHandler,
+		workerN:  workerN,
+		fetcher:  fetcher,
+		runningN: 0,
+		waitCh:   make(chan struct{}),
 	}
 }

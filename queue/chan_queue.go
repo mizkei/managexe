@@ -7,12 +7,7 @@ import (
 )
 
 type chanQueue struct {
-	ch        chan tasx.Task
-	handleErr func(error)
-}
-
-func (q *chanQueue) HandleErr(err error) {
-	q.handleErr(err)
+	ch chan tasx.Task
 }
 
 func (q *chanQueue) InsertTask(ctx context.Context, task tasx.Task) error {
@@ -33,9 +28,8 @@ func (q *chanQueue) FetchTask(ctx context.Context) (tasx.Task, error) {
 	}
 }
 
-func NewChanQueue(bufferN int, errHandler func(error)) (tasx.Queue, error) {
+func NewChanQueue(bufferN int) (tasx.Queue, error) {
 	return &chanQueue{
-		ch:        make(chan tasx.Task, bufferN),
-		handleErr: errHandler,
+		ch: make(chan tasx.Task, bufferN),
 	}, nil
 }

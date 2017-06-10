@@ -6,7 +6,6 @@ import (
 
 type Task interface {
 	Run(context.Context) error
-	HandleErr(error)
 }
 
 type TaskInserter interface {
@@ -15,7 +14,6 @@ type TaskInserter interface {
 
 type TaskFetcher interface {
 	FetchTask(context.Context) (Task, error)
-	HandleErr(error)
 }
 
 type Queue interface {
