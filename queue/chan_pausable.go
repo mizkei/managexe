@@ -58,12 +58,16 @@ func (pq *PausableChanQueue) InsertTask(ctx context.Context, task tasx.Task) err
 }
 
 func (pq *PausableChanQueue) FetchTask(ctx context.Context) (tasx.Task, error) {
+	pq.mux.Lock()
 	if pq.isPaused {
+		pq.mux.Unlock()
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-pq.wait():
 		}
+	} else {
+		pq.mux.Unlock()
 	}
 
 	return pq.que.FetchTask(ctx)
