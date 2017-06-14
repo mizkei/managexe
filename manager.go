@@ -8,16 +8,13 @@ import (
 	"sync/atomic"
 )
 
-var (
-	Logger = log.New(os.Stderr, "", log.Ldate|log.Ltime)
-)
-
 type Manager struct {
 	wg       sync.WaitGroup
 	workerN  int
 	runningN int32
 	fetcher  TaskFetcher
 	waitCh   chan struct{}
+	logger   *log.Logger
 }
 
 func (m Manager) WorkerState() (workerN, runningN int) {
@@ -27,6 +24,10 @@ func (m Manager) WorkerState() (workerN, runningN int) {
 func (m *Manager) Wait() {
 	<-m.waitCh
 	m.wg.Wait()
+}
+
+func (m *Manager) SetLogger(l *log.Logger) {
+	m.logger = l
 }
 
 func (m *Manager) Run(ctx context.Context) {
@@ -42,7 +43,7 @@ func (m *Manager) Run(ctx context.Context) {
 				default:
 					task, err := m.fetcher.FetchTask(ctx)
 					if err != nil {
-						Logger.Println(err)
+						m.logger.Println(err)
 						continue
 					}
 					atomic.AddInt32(&m.runningN, 1)
@@ -51,11 +52,11 @@ func (m *Manager) Run(ctx context.Context) {
 						defer func() {
 							atomic.AddInt32(&m.runningN, -1)
 							if err := recover(); err != nil {
-								Logger.Println(err)
+								m.logger.Println(err)
 							}
 						}()
 						if err := task.Run(ctx); err != nil {
-							Logger.Println(err)
+							m.logger.Println(err)
 						}
 					}()
 				}
@@ -73,5 +74,6 @@ func NewManager(workerN int, fetcher TaskFetcher) *Manager {
 		fetcher:  fetcher,
 		runningN: 0,
 		waitCh:   make(chan struct{}),
+		logger:   log.New(os.Stderr, "", log.Ldate|log.Ltime),
 	}
 }
