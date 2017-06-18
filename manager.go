@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 type Manager struct {
@@ -27,7 +28,7 @@ func (m *Manager) Wait() {
 }
 
 func (m *Manager) SetLogger(l *log.Logger) {
-	m.logger = l
+	atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(m.logger)), unsafe.Pointer(l))
 }
 
 func (m *Manager) Run(ctx context.Context) {
