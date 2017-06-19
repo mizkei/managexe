@@ -9,7 +9,14 @@ import (
 	"unsafe"
 )
 
-type Manager struct {
+type Manager interface {
+	WorkerState() (workerN, runningN int)
+	Wait()
+	SetLogger(*log.Logger)
+	Run(context.Context)
+}
+
+type manager struct {
 	wg       sync.WaitGroup
 	workerN  int
 	runningN int32
@@ -18,20 +25,20 @@ type Manager struct {
 	logger   *log.Logger
 }
 
-func (m Manager) WorkerState() (workerN, runningN int) {
+func (m manager) WorkerState() (workerN, runningN int) {
 	return m.workerN, int(m.runningN)
 }
 
-func (m *Manager) Wait() {
+func (m *manager) Wait() {
 	<-m.waitCh
 	m.wg.Wait()
 }
 
-func (m *Manager) SetLogger(l *log.Logger) {
+func (m *manager) SetLogger(l *log.Logger) {
 	atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&m.logger)), unsafe.Pointer(l))
 }
 
-func (m *Manager) Run(ctx context.Context) {
+func (m *manager) Run(ctx context.Context) {
 	for i := 0; i < m.workerN; i++ {
 		m.wg.Add(1)
 		go func() {
@@ -69,8 +76,8 @@ func (m *Manager) Run(ctx context.Context) {
 	m.wg.Wait()
 }
 
-func NewManager(workerN int, fetcher TaskFetcher) *Manager {
-	return &Manager{
+func NewManager(workerN int, fetcher TaskFetcher) Manager {
+	return &manager{
 		workerN:  workerN,
 		fetcher:  fetcher,
 		runningN: 0,
