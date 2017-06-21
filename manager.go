@@ -9,15 +9,20 @@ import (
 	"unsafe"
 )
 
+// Manager manages worker.
 type Manager interface {
+	// WorkerState returns state of workers.
 	WorkerState() (workerN, runningN int)
+	// Wait blocks until all worker finish.
 	Wait()
+	// SetLogger sets logger.
 	SetLogger(*log.Logger)
+	// Run starts fetching and task execution.
 	Run(context.Context)
 }
 
 type manager struct {
-	wg       sync.WaitGroup
+	wg       *sync.WaitGroup
 	workerN  int
 	runningN int32
 	fetcher  TaskFetcher
@@ -76,6 +81,9 @@ func (m *manager) Run(ctx context.Context) {
 	m.wg.Wait()
 }
 
+// NewManager returns Manager instance.
+// workerN is number of worker.
+// worker fetch task from fetcher and run task.
 func NewManager(workerN int, fetcher TaskFetcher) Manager {
 	return &manager{
 		workerN:  workerN,
