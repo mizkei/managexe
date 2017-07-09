@@ -36,11 +36,11 @@ func (m *manager) Wait() {
 	m.wg.Wait()
 }
 
-func (m *manager) runWorker(ctx context.Context) error {
+func (m *manager) runWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 		default:
 			task, err := m.fetcher.FetchTask(ctx)
 			if err != nil {
@@ -61,6 +61,8 @@ func (m *manager) runWorker(ctx context.Context) error {
 
 func (m *manager) Run(ctx context.Context) {
 	runCh := make(chan struct{})
+	defer close(runCh)
+
 	go func() {
 		for {
 			select {
@@ -76,10 +78,8 @@ func (m *manager) Run(ctx context.Context) {
 							runCh <- struct{}{}
 						}
 					}()
-					err := m.runWorker(ctx)
-					if err == context.Canceled || err == context.DeadlineExceeded {
-						m.wg.Done()
-					}
+					m.runWorker(ctx)
+					m.wg.Done()
 				}()
 			}
 		}
