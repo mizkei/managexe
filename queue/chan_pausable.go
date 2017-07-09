@@ -7,6 +7,9 @@ import (
 	"github.com/mizkei/tasx"
 )
 
+var _ tasx.TaskInserter = (*PausableChanQueue)(nil)
+var _ tasx.TaskFetcher = (*PausableChanQueue)(nil)
+
 // PausableChanQueue is queue that can pause FetchTask.
 type PausableChanQueue struct {
 	mux      sync.Mutex
