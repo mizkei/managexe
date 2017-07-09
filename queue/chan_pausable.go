@@ -9,48 +9,31 @@ import (
 
 type PausableChanQueue struct {
 	mux      sync.Mutex
-	cond     *sync.Cond
+	wg       *sync.WaitGroup
 	que      tasx.Queue
 	isPaused bool
 }
 
 func (pq *PausableChanQueue) Pause() {
 	pq.mux.Lock()
+	defer pq.mux.Unlock()
+	if pq.isPaused {
+		return
+	}
+
 	pq.isPaused = true
-	pq.mux.Unlock()
+	pq.wg.Add(1)
 }
 
 func (pq *PausableChanQueue) Resume() {
 	pq.mux.Lock()
 	defer pq.mux.Unlock()
-
 	if !pq.isPaused {
 		return
 	}
 
-	pq.cond.Broadcast()
 	pq.isPaused = false
-}
-
-func (pq *PausableChanQueue) wait() chan struct{} {
-	ch := make(chan struct{})
-
-	pq.mux.Lock()
-	defer pq.mux.Unlock()
-
-	if !pq.isPaused {
-		close(ch)
-		return ch
-	}
-
-	go func() {
-		pq.cond.L.Lock()
-		pq.cond.Wait()
-		close(ch)
-		pq.cond.L.Unlock()
-	}()
-
-	return ch
+	pq.wg.Done()
 }
 
 func (pq *PausableChanQueue) InsertTask(ctx context.Context, task tasx.Task) error {
@@ -58,18 +41,7 @@ func (pq *PausableChanQueue) InsertTask(ctx context.Context, task tasx.Task) err
 }
 
 func (pq *PausableChanQueue) FetchTask(ctx context.Context) (tasx.Task, error) {
-	pq.mux.Lock()
-	if pq.isPaused {
-		pq.mux.Unlock()
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-pq.wait():
-		}
-	} else {
-		pq.mux.Unlock()
-	}
-
+	pq.wg.Wait()
 	return pq.que.FetchTask(ctx)
 }
 
@@ -80,7 +52,7 @@ func NewPausableChanQueue(bufferN int) (*PausableChanQueue, error) {
 	}
 
 	return &PausableChanQueue{
-		cond:     sync.NewCond(&sync.Mutex{}),
+		wg:       &sync.WaitGroup{},
 		que:      que,
 		isPaused: false,
 	}, nil
