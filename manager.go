@@ -2,11 +2,10 @@ package tasx
 
 import (
 	"context"
-	"log"
-	"os"
+	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 )
 
 // Manager manages worker.
@@ -15,19 +14,17 @@ type Manager interface {
 	WorkerState() (workerN, runningN int)
 	// Wait blocks until all worker finish.
 	Wait()
-	// SetLogger sets logger.
-	SetLogger(*log.Logger)
 	// Run starts fetching and task execution.
 	Run(context.Context)
 }
 
 type manager struct {
-	wg       *sync.WaitGroup
-	workerN  int
-	runningN int32
-	fetcher  TaskFetcher
-	waitCh   chan struct{}
-	logger   *log.Logger
+	wg         *sync.WaitGroup
+	workerN    int
+	runningN   int32
+	fetcher    TaskFetcher
+	waitCh     chan struct{}
+	errHandler func(error)
 }
 
 func (m manager) WorkerState() (workerN, runningN int) {
@@ -39,42 +36,58 @@ func (m *manager) Wait() {
 	m.wg.Wait()
 }
 
-func (m *manager) SetLogger(l *log.Logger) {
-	atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&m.logger)), unsafe.Pointer(l))
+func (m *manager) runWorker(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			task, err := m.fetcher.FetchTask(ctx)
+			if err != nil {
+				m.errHandler(err)
+				continue
+			}
+			atomic.AddInt32(&m.runningN, 1)
+
+			func() {
+				defer atomic.AddInt32(&m.runningN, -1)
+				if err := task.Run(ctx); err != nil {
+					m.errHandler(err)
+				}
+			}()
+		}
+	}
 }
 
 func (m *manager) Run(ctx context.Context) {
-	for i := 0; i < m.workerN; i++ {
-		m.wg.Add(1)
-		go func() {
-			defer m.wg.Done()
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					task, err := m.fetcher.FetchTask(ctx)
-					if err != nil {
-						m.logger.Println(err)
-						continue
-					}
-					atomic.AddInt32(&m.runningN, 1)
-
-					func() {
-						defer func() {
-							atomic.AddInt32(&m.runningN, -1)
-							if err := recover(); err != nil {
-								m.logger.Println(err)
+	runCh := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-runCh:
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							err, ok := r.(error)
+							if !ok {
+								err = fmt.Errorf("tasx: %v", r)
 							}
-						}()
-						if err := task.Run(ctx); err != nil {
-							m.logger.Println(err)
+							m.errHandler(err)
+							runCh <- struct{}{}
 						}
 					}()
-				}
+					err := m.runWorker(ctx)
+					if err == context.Canceled || err == context.DeadlineExceeded {
+						m.wg.Done()
+					}
+				}()
 			}
-		}()
+		}
+	}()
+
+	for i := 0; i < m.workerN; i++ {
+		m.wg.Add(1)
+		runCh <- struct{}{}
 	}
 
 	close(m.waitCh)
@@ -84,12 +97,22 @@ func (m *manager) Run(ctx context.Context) {
 // NewManager returns Manager instance.
 // workerN is number of worker.
 // worker fetch task from fetcher and run task.
-func NewManager(workerN int, fetcher TaskFetcher) Manager {
-	return &manager{
-		workerN:  workerN,
-		fetcher:  fetcher,
-		runningN: 0,
-		waitCh:   make(chan struct{}),
-		logger:   log.New(os.Stderr, "", log.Ldate|log.Ltime),
+func NewManager(workerN int, fetcher TaskFetcher, errHandler func(error)) (Manager, error) {
+	if workerN < 1 {
+		return nil, errors.New("number of workers should be greater than 0")
 	}
+	if fetcher == nil {
+		return nil, errors.New("featcher should not be nil")
+	}
+	if errHandler == nil {
+		return nil, errors.New("error handler should not be nil")
+	}
+
+	return &manager{
+		workerN:    workerN,
+		fetcher:    fetcher,
+		runningN:   0,
+		waitCh:     make(chan struct{}),
+		errHandler: errHandler,
+	}, nil
 }
