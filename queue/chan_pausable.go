@@ -7,6 +7,7 @@ import (
 	"github.com/mizkei/tasx"
 )
 
+// PausableChanQueue is queue that can pause FetchTask.
 type PausableChanQueue struct {
 	mux      sync.Mutex
 	wg       *sync.WaitGroup
@@ -14,6 +15,7 @@ type PausableChanQueue struct {
 	isPaused bool
 }
 
+// Pause pause FetchTask.
 func (pq *PausableChanQueue) Pause() {
 	pq.mux.Lock()
 	defer pq.mux.Unlock()
@@ -25,6 +27,7 @@ func (pq *PausableChanQueue) Pause() {
 	pq.wg.Add(1)
 }
 
+// Resume resume FetchTask.
 func (pq *PausableChanQueue) Resume() {
 	pq.mux.Lock()
 	defer pq.mux.Unlock()
@@ -36,15 +39,19 @@ func (pq *PausableChanQueue) Resume() {
 	pq.wg.Done()
 }
 
+// InsertTask insert a task to queue.
 func (pq *PausableChanQueue) InsertTask(ctx context.Context, task tasx.Task) error {
 	return pq.que.InsertTask(ctx, task)
 }
 
+// FetchTask fetch a task from channel.
+// if queue is paused, FetchTask blocks until Resume called.
 func (pq *PausableChanQueue) FetchTask(ctx context.Context) (tasx.Task, error) {
 	pq.wg.Wait()
 	return pq.que.FetchTask(ctx)
 }
 
+// NewPausableChanQueue create a queue that is pausable.
 func NewPausableChanQueue(bufferN int) (*PausableChanQueue, error) {
 	que, err := NewChanQueue(bufferN)
 	if err != nil {

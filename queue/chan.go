@@ -28,6 +28,7 @@ func (q *chanQueue) FetchTask(ctx context.Context) (tasx.Task, error) {
 	}
 }
 
+// NewChanQueue create queue that implemented in channel.
 func NewChanQueue(bufferN int) (tasx.Queue, error) {
 	return &chanQueue{
 		ch: make(chan tasx.Task, bufferN),
