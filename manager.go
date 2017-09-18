@@ -109,6 +109,7 @@ func NewManager(workerN int, fetcher TaskFetcher, errHandler func(error)) (Manag
 	}
 
 	return &manager{
+		wg:         new(sync.WaitGroup),
 		workerN:    workerN,
 		fetcher:    fetcher,
 		runningN:   0,
